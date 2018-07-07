@@ -40,6 +40,7 @@ contract DutchAuction {
     event AuctionEnded(uint256 priceFinal, uint256 _endTime, Endings ending);
     event BidAccepted(address indexed _address, uint256 price, uint256 transfer);
     event BidPartiallyRefunded(address indexed _address, uint256 transfer);
+    event BidRefunded(address indexed _address, uint256 transfer);
     event FundsTransfered(address indexed _bidder, address indexed _wallet, uint256 amount);
     event TokensClaimed(address indexed _address, uint256 amount);
     event TokensDistributed();
@@ -375,14 +376,15 @@ contract DutchAuction {
             tokens = auctionTokensBalance;
         }
 
+        bids[msg.sender].claimed = true;
+
         // Transfer tokens and fire event
         token.transferFrom(owner_address, msg.sender, tokens);
         emit TokensClaimed(msg.sender, tokens);
 
-        //Update the total amount of funds for which tokens have been claimed
+        //Update the total amount of funds for which tokens have been claimed and check for refunds
         if(claimedBid.useWholeAmount){
             claimed_wei = claimed_wei + claimedBid.value;
-            bids[msg.sender].claimed = true;
         }else{
             uint256 usedWei = claimedBid.numOfToken.mul(price_final);
             claimed_wei = claimed_wei + usedWei;
@@ -414,8 +416,9 @@ contract DutchAuction {
 
         refunds[msg.sender].refunded = true;
 
-        // Transfer amount to msg.sender from contract account TODO
+        // Transfer amount to msg.sender from contract account
         msg.sender.transfer(amountToRefund);
+        emit BidRefunded(msg.sender, amountToRefund);
     }
 
     // To be called by external API to check whether a price update is required
