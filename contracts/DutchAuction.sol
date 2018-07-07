@@ -19,8 +19,6 @@ contract DutchAuction {
 
     // Auction Stages
     enum Stages {
-        AbsenteeBidOpened,
-        AbsenteeBidClosed,
         AuctionDeployed,
         AuctionStarted,
         AuctionEnded,
@@ -161,7 +159,7 @@ contract DutchAuction {
     }
 
     // Absentee Bid Interface
-    function absenteeBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable atStage(Stages.AbsenteeBidOpened) {
+    function absenteeBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable atStage(Stages.AuctionDeployed) {
 
         address sender = msg.sender;
         uint256 bidValue = msg.value;
@@ -188,8 +186,8 @@ contract DutchAuction {
 
         bids[sender] = bid;
 
-        preBidders[bidValue].exist = true;
-        preBidders[bidValue].addresses.push(sender);
+        preBidders[_price].exist = true;
+        preBidders[_price].addresses.push(sender);
 
         received_wei = received_wei.add(bidValue);
 
