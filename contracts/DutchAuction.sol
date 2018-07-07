@@ -170,7 +170,7 @@ contract DutchAuction {
             require(_numOfToken == bidValue.div(_price));
         }
 
-        require(!bids[sender].placed && _price >= price_reserve && bidValue >= minimum_bid);
+        require(!bids[sender].absentee && _price >= price_reserve && bidValue >= minimum_bid);
 
         // Create bid
         Bid memory bid = Bid({
@@ -428,26 +428,27 @@ contract DutchAuction {
     function updatePrice() public isOwner atStage(Stages.AuctionStarted) {
         if(price_current <= price_reserve){
             endImmediately(price_reserve, Endings.ReservePriceReached);
-        }
-        price_current = price_current.sub(1);
-        price_final = price_current;
-        interval_start_time = block.timestamp;
+        }else{
+            price_current = price_current.sub(1);
+            price_final = price_current;
+            interval_start_time = block.timestamp;
 
-        // Check if any pre bid was placed at the current price
-        if(preBidders[price_current].exist){
-            address[] memory addresses = preBidders[price_current].addresses;
+            // Check if any pre bid was placed at the current price
+            if(preBidders[price_current].exist){
+                address[] memory addresses = preBidders[price_current].addresses;
 
-            for(uint a = 0; a < addresses.length; a++ ){
-                Bid memory preBid = bids[addresses[a]];
-                preBid.placed = true;
+                for(uint a = 0; a < addresses.length; a++ ){
+                    Bid memory preBid = bids[addresses[a]];
+                    preBid.placed = true;
 
-                if(preBid.useWholeAmount){
-                    amount_in_bid = amount_in_bid.add(preBid.value);
-                }else{
-                    tokens_in_bid = tokens_in_bid.add(preBid.numOfToken);
+                    if(preBid.useWholeAmount){
+                        amount_in_bid = amount_in_bid.add(preBid.value);
+                    }else{
+                        tokens_in_bid = tokens_in_bid.add(preBid.numOfToken);
+                    }
+
+                    bidSeq.push(preBid);
                 }
-
-                bidSeq.push(preBid);
             }
         }
     }
