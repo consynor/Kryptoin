@@ -1,7 +1,7 @@
 pragma solidity ^0.4.24;
 
 import "./Z_ERC20.sol";
-import "./F_SafeMath.sol";
+import "./SafeMath.sol";
 
 contract DutchAuction {
     using SafeMath for uint256;
@@ -159,7 +159,7 @@ contract DutchAuction {
         emit AuctionDeployed(_priceStart);
     }
 
-    // Default fallback function
+    // Absentee Bid Interface
     function absenteeBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable atStage(Stages.AbsenteeBidOpened) {
 
         address sender = msg.sender;
@@ -327,9 +327,6 @@ contract DutchAuction {
                 if(tokenDifference < 0){
                     uint256 returnedWei = extraTokensAllocated.mul(price_final);
 
-                    // Refund remaining value
-                    bidSeq[a].sender.transfer(returnedWei);
-
                     bidSeq[a].value = bidSeq[a].value.sub(returnedWei);
                     bidSeq[a].numOfToken = -tokenDifference;
 
@@ -338,6 +335,9 @@ contract DutchAuction {
                     }else{
                         tokens_in_bid = tokens_in_bid.sub(extraTokensAllocated);
                     }
+
+                    // Refund remaining value
+                    bidSeq[a].sender.transfer(returnedWei);
                     break;
                 }else if(tokenDifference == 0){
                     delete bids[bidToBeVerified.sender];
@@ -407,9 +407,12 @@ contract DutchAuction {
 
         if(refunds[msg.sender].amount == 0 && bids[msg.sender].placed == false){
             amountToRefund = bids[msg.sender].value;
+            refunds[msg.sender].amount = amountToRefund;
         }else{
             amountToRefund = refunds[msg.sender].amount;
         }
+
+        refunds[msg.sender].refunded = true;
 
         // Transfer amount to msg.sender from contract account TODO
         msg.sender.transfer(amountToRefund);
