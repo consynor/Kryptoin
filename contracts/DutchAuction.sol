@@ -299,64 +299,69 @@ contract DutchAuction {
     function endImmediately(uint256 atPrice, Endings ending) private atStage(Stages.AuctionStarted) {
         end_time = block.timestamp;
         price_final = atPrice;
-        current_stage = Stages.AuctionEnded;
-        emit AuctionEnded(price_current, end_time, ending);
 
         uint256 amountInBid = amount_in_bid;
         uint256 tokensInBid = tokens_in_bid;
 
-        uint256 extraTokensAllocated = (tokensInBid.add(amountInBid.div(price_final))).sub( initial_offering);
+        if(tokensInBid.add(amountInBid.div(price_final)) > initial_offering){
 
-        Bid[] memory bidSeqTemp = bidSeq;
+            uint256 extraTokensAllocated = tokensInBid.add(amountInBid.div(price_final)).sub(initial_offering);
 
-        if(extraTokensAllocated > 0){
-            for(uint a = bidSeqTemp.length - 1; a >=0; a--){
-                Bid memory bidToBeVerified = bidSeq[a];
+            for(uint a = bidSeq.length - 1; a >=0; a--){
+                uint256 bidValue = bidSeq[a].value;
+                uint256 numOfToken = bidSeq[a].numOfToken;
 
                 uint256 assignedTokens;
 
-                if(bidToBeVerified.useWholeAmount){
-                    assignedTokens = bidToBeVerified.value.div(price_final);
+                if(bidSeq[a].useWholeAmount){
+                    assignedTokens = bidValue.div(price_final);
                 }else{
-                    assignedTokens = bidToBeVerified.numOfToken;
+                    assignedTokens = numOfToken;
                 }
 
-                uint256 tokenDifference = extraTokensAllocated - assignedTokens;
+                if(assignedTokens > extraTokensAllocated){
 
-                if(tokenDifference < 0){
+                    uint256 tokenDifference = assignedTokens - extraTokensAllocated;
                     uint256 returnedWei = extraTokensAllocated.mul(price_final);
 
                     bidSeq[a].value = bidSeq[a].value.sub(returnedWei);
-                    bidSeq[a].numOfToken = -tokenDifference;
+                    bidSeq[a].numOfToken = tokenDifference;
 
-                    if(bidToBeVerified.useWholeAmount){
+                    if(bidSeq[a].useWholeAmount){
                         amount_in_bid = amount_in_bid.sub(returnedWei);
                     }else{
                         tokens_in_bid = tokens_in_bid.sub(extraTokensAllocated);
                     }
 
                     // Refund remaining value
-                    bidSeq[a].sender.transfer(returnedWei);
+                    Refund memory refund = Refund({
+                        amount: returnedWei,
+                        refunded: false
+                        });
+                    refunds[msg.sender] = refund;
                     break;
-                }else if(tokenDifference == 0){
-                    delete bids[bidToBeVerified.sender];
-                    if(bidToBeVerified.useWholeAmount){
-                        amount_in_bid = amount_in_bid.sub(bidToBeVerified.value);
+                }else if(assignedTokens == extraTokensAllocated){
+                    bids[bidSeq[a].sender].placed = false;
+                    if(bidSeq[a].useWholeAmount){
+                        amount_in_bid = amount_in_bid.sub(bidValue);
                     }else{
-                        tokens_in_bid = tokens_in_bid.sub(bidToBeVerified.numOfToken);
+                        tokens_in_bid = tokens_in_bid.sub(numOfToken);
                     }
                     break;
                 }else{
-                    delete bids[bidToBeVerified.sender];
-                    if(bidToBeVerified.useWholeAmount){
-                        amount_in_bid = amount_in_bid.sub(bidToBeVerified.value);
+                    bids[bidSeq[a].sender].placed = false;
+                    if(bidSeq[a].useWholeAmount){
+                        amount_in_bid = amount_in_bid.sub(bidValue);
                     }else{
-                        tokens_in_bid = tokens_in_bid.sub(bidToBeVerified.numOfToken);
+                        tokens_in_bid = tokens_in_bid.sub(numOfToken);
                     }
                     continue;
                 }
             }
         }
+
+        current_stage = Stages.AuctionEnded;
+        emit AuctionEnded(price_current, end_time, ending);
     }
 
     // Claim tokens
@@ -426,29 +431,38 @@ contract DutchAuction {
 
     //To be called by external API to update price, when no bid occur during interval duration
     function updatePrice() public isOwner atStage(Stages.AuctionStarted) {
-        if(price_current <= price_reserve){
+        require(price_current >= price_reserve);
+        if(price_current == price_reserve){
+            if(preBidders[price_current].exist){
+                placePreBid(price_reserve);
+            }
             endImmediately(price_reserve, Endings.ReservePriceReached);
         }else{
             price_current = price_current.sub(1);
             price_final = price_current;
             interval_start_time = block.timestamp;
-
-            // Check if any pre bid was placed at the current price
             if(preBidders[price_current].exist){
-                address[] memory addresses = preBidders[price_current].addresses;
+                placePreBid(price_current);
+            }
+        }
+    }
 
-                for(uint a = 0; a < addresses.length; a++ ){
-                    Bid memory preBid = bids[addresses[a]];
-                    preBid.placed = true;
+    // To place absentee bids
+    function placePreBid(uint256 price) internal atStage(Stages.AuctionStarted){
+        address[] memory addresses = preBidders[price].addresses;
 
-                    if(preBid.useWholeAmount){
-                        amount_in_bid = amount_in_bid.add(preBid.value);
-                    }else{
-                        tokens_in_bid = tokens_in_bid.add(preBid.numOfToken);
-                    }
+        for(uint a = 0; a < addresses.length; a++ ){
+            Bid storage preBid = bids[addresses[a]];
+            if(preBid.placed == false){
+                preBid.placed = true;
 
-                    bidSeq.push(preBid);
+                if(preBid.useWholeAmount){
+                    amount_in_bid = amount_in_bid.add(preBid.value);
+                }else{
+                    tokens_in_bid = tokens_in_bid.add(preBid.numOfToken);
                 }
+
+                bidSeq.push(preBid);
             }
         }
     }
@@ -460,13 +474,11 @@ contract DutchAuction {
         token.transfer(wallet_address, balance);
     }
 
-    // Returns current price
-    // Used for unit tests
-    function getPrice() public atStage(Stages.AuctionStarted) view returns (uint256) {
-        return price_current;
-    }
-
     function getTokenBal(address accAddress) public view returns (uint){
         return token.balanceOf(accAddress);
+    }
+
+    function getPreBidders(uint256 price) public view isOwner returns (address[]) {
+        return preBidders[price].addresses;
     }
 }
