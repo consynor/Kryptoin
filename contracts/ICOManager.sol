@@ -2,8 +2,9 @@ pragma solidity ^0.4.24;
 
 import "./Z_Ownable.sol";
 import "./DutchAuction.sol";
+import "./KrpToken.sol";
 
-contract ICO is Ownable{
+contract ICOManager is Ownable{
 
     struct ICOPhase {
         string phaseName;
@@ -16,9 +17,8 @@ contract ICO is Ownable{
 
     uint8 public currentICOPhase;
 
-    mapping(address=>uint256) public ethContributedBy;
-    uint256 public totalEthRaised;
-    uint256 public totalTokensSoldTillNow;
+    mapping(uint8 => DutchAuction) auctions;
+    uint8 auctionIndex = 1;
 
     mapping(uint8=>ICOPhase) public icoPhases;
     uint8 icoPhasesIndex=1;
@@ -28,19 +28,6 @@ contract ICO is Ownable{
     constructor(address _tokenAddress) public{
         tokenAddress = _tokenAddress;
     }
-
-    function getEthContributedBy(address _address) public constant returns(uint256){
-        return ethContributedBy[_address];
-    }
-
-    function getTotalEthRaised() public constant returns(uint256){
-        return totalEthRaised;
-    }
-
-    function getTotalTokensSoldTillNow() public constant returns(uint256){
-        return totalTokensSoldTillNow;
-    }
-
 
     function addICOPhase(
         string _phaseName,
@@ -62,12 +49,15 @@ contract ICO is Ownable{
         DutchAuction auction = new DutchAuction(
             _priceStart, _priceReserve, _minimumBid, _claimPeriod, _walletAddress, _intervalDuration);
 
-        auction.startAuction(_tokenAddress, offering);
+        auctions[auctionIndex] = auction;
+        auctionIndex++;
 
+        auction.startAuction(_tokenAddress, offering);
     }
 
     function toggleSaleStatus() public onlyOwner{
         icoPhases[currentICOPhase].saleOn = !icoPhases[currentICOPhase].saleOn;
+        auctions[auctionIndex].toggleSaleOn();
     }
 
     function transferOwnership(address newOwner) public onlyOwner {
@@ -76,4 +66,7 @@ contract ICO is Ownable{
         }
     }
 
+    function toggleTradeOn() public onlyOwner {
+        KrpToken(tokenAddress).toggleTradeOn();
+    }
 }

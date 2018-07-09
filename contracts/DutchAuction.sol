@@ -43,6 +43,7 @@ contract DutchAuction {
     event TokensClaimed(address indexed _address, uint256 amount);
     event TokensDistributed();
 
+    bool public saleOn = true;
 
     //intervals
     uint256 public intervals_duration;
@@ -134,6 +135,11 @@ contract DutchAuction {
         _;
     }
 
+    modifier isSaleOn() {
+        require(saleOn == true);
+        _;
+    }
+
     constructor(
         uint256 _priceStart,
         uint256 _priceReserve,
@@ -159,12 +165,12 @@ contract DutchAuction {
         emit AuctionDeployed(_priceStart);
     }
 
-    function () public payable isOwner {
-
+    function toggleSaleOn() public isOwner {
+        saleOn = !saleOn;
     }
 
     // Absentee Bid Interface
-    function absenteeBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable atStage(Stages.AuctionDeployed) {
+    function absenteeBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable isSaleOn atStage(Stages.AuctionDeployed) {
 
         address sender = msg.sender;
         uint256 bidValue = msg.value;
@@ -196,12 +202,10 @@ contract DutchAuction {
 
         received_wei = received_wei.add(bidValue);
 
-        // Send bid amount to owner
-        wallet_address.transfer(bidValue);
         emit FundsTransfered(sender, wallet_address, bidValue);
     }
 
-    function doBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable atStage(Stages.AuctionStarted) {
+    function doBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable isSaleOn atStage(Stages.AuctionStarted) {
 
         address sender = msg.sender;
         uint256 bidValue = msg.value;
@@ -273,13 +277,11 @@ contract DutchAuction {
             tokens_in_bid = tokens_in_bid.add(numOfToken);
         }
 
-        // Send bid amount to owner
-        wallet_address.transfer(value);
         emit FundsTransfered(sender, wallet_address, value);
     }
 
     // Setup auction
-    function startAuction(address _tokenAddress, uint256 offering) external isOwner atStage(Stages.AuctionDeployed) {
+    function startAuction(address _tokenAddress, uint256 offering) external isOwner isSaleOn atStage(Stages.AuctionDeployed) {
         // Initialize external contract type
         token = ERC20(_tokenAddress);
         uint256 balance = token.balanceOf(owner_address);
@@ -490,5 +492,9 @@ contract DutchAuction {
 
     function getPreBidders(uint256 price) public view isOwner returns (address[]) {
         return preBidders[price].addresses;
+    }
+
+    function transferWeiToOwner() public isOwner atStage(Stages.TokensDistributed){
+        wallet_address.transfer(address(this).balance);
     }
 }
