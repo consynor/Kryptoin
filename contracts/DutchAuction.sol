@@ -43,6 +43,7 @@ contract DutchAuction {
     event TokensClaimed(address indexed _address, uint256 amount);
     event TokensDistributed();
 
+
     //intervals
     uint256 public intervals_duration;
 
@@ -156,6 +157,10 @@ contract DutchAuction {
         // Update auction stage and fire event
         current_stage = Stages.AuctionDeployed;
         emit AuctionDeployed(_priceStart);
+    }
+
+    function () public payable isOwner {
+
     }
 
     // Absentee Bid Interface
@@ -405,7 +410,7 @@ contract DutchAuction {
         }
     }
 
-    function claimRefund() external atStage(Stages.TokensDistributed){
+    function claimRefund() external atStage(Stages.AuctionEnded){
         require(refunds[msg.sender].refunded == false);
 
         uint256 amountToRefund = 0;
@@ -472,6 +477,11 @@ contract DutchAuction {
         uint256 balance = token.balanceOf(address(this));
         require(balance > 0);
         token.transfer(wallet_address, balance);
+    }
+
+    // Owner can change stage in an emergency situation
+    function changeStage(Stages stage) public isOwner {
+        current_stage = stage;
     }
 
     function getTokenBal(address accAddress) public view returns (uint){
