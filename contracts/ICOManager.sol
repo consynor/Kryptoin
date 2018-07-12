@@ -17,13 +17,13 @@ contract ICOManager is Ownable{
 
     uint8 public currentICOPhase;
 
-    mapping(uint8 => DutchAuction) auctions;
-    uint8 auctionIndex = 1;
+    address[] public auctions;
+    address public currentAuction;
 
     mapping(uint8=>ICOPhase) public icoPhases;
     uint8 icoPhasesIndex=1;
 
-    address tokenAddress;
+    address public tokenAddress;
 
     constructor(address _tokenAddress) public{
         tokenAddress = _tokenAddress;
@@ -37,27 +37,28 @@ contract ICOManager is Ownable{
         uint256 _claimPeriod,
         address _walletAddress,
         uint256 _intervalDuration,
-        address _tokenAddress,
-        uint256 offering) public onlyOwner{
+        uint256 _offering) public onlyOwner{
         icoPhases[icoPhasesIndex].phaseName = _phaseName;
         icoPhases[icoPhasesIndex].startPrice = _priceStart;
-        icoPhases[icoPhasesIndex].tokensStaged = offering;
+        icoPhases[icoPhasesIndex].finalPrice = 0;
+        icoPhases[icoPhasesIndex].tokensStaged = _offering;
         icoPhases[icoPhasesIndex].tokensAllocated = 0;
         icoPhases[icoPhasesIndex].saleOn = false;
         icoPhasesIndex++;
 
-        DutchAuction auction = new DutchAuction(
-            _priceStart, _priceReserve, _minimumBid, _claimPeriod, _walletAddress, _intervalDuration);
+        address auction = new DutchAuction(
+            _priceStart, _priceReserve, _minimumBid,
+            _claimPeriod, _walletAddress, _intervalDuration,
+            _offering, tokenAddress, owner);
 
-        auctions[auctionIndex] = auction;
-        auctionIndex++;
-
-        auction.startAuction(_tokenAddress, offering);
+        auctions.push(auction);
+        currentAuction = auction;
     }
 
     function toggleSaleStatus() public onlyOwner{
         icoPhases[currentICOPhase].saleOn = !icoPhases[currentICOPhase].saleOn;
-        auctions[auctionIndex].toggleSaleOn();
+        DutchAuction auc = DutchAuction(auctions[auctions.length - 1]);
+        auc.toggleSaleOn();
     }
 
     function transferOwnership(address newOwner) public onlyOwner {
@@ -67,6 +68,11 @@ contract ICOManager is Ownable{
     }
 
     function toggleTradeOn() public onlyOwner {
-        KrpToken(tokenAddress).toggleTradeOn();
+        KrpToken krp = KrpToken(tokenAddress);
+        krp.toggleTradeOn();
+    }
+
+    function getAuctions() public view returns(address[]){
+        return auctions;
     }
 }

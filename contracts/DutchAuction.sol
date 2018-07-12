@@ -146,11 +146,23 @@ contract DutchAuction {
         uint256 _minimumBid,
         uint256 _claimPeriod,
         address _walletAddress,
-        uint256 _intervalDuration
+        uint256 _intervalDuration,
+        uint256 _offering,
+        address _tokenAddress,
+        address _ownerAddress
     ) public {
+
         // Set auction owner address
-        owner_address = msg.sender;
+        owner_address = _ownerAddress;
         wallet_address = _walletAddress;
+
+        // // Initialize external contract type
+        token = ERC20(_tokenAddress);
+        uint256 balance = token.balanceOf(owner_address);
+
+        // Verify & Initialize starting parameters
+        require(balance >= _offering);// TODO check spending limit of contract
+        initial_offering = _offering;
 
         // Set auction parameters
         price_start = _priceStart;
@@ -201,6 +213,8 @@ contract DutchAuction {
         preBidders[_price].addresses.push(sender);
 
         received_wei = received_wei.add(bidValue);
+
+        wallet_address.transfer(bidValue);
 
         emit FundsTransfered(sender, wallet_address, bidValue);
     }
@@ -277,19 +291,12 @@ contract DutchAuction {
             tokens_in_bid = tokens_in_bid.add(numOfToken);
         }
 
+        wallet_address.transfer(value);
         emit FundsTransfered(sender, wallet_address, value);
     }
 
     // Setup auction
-    function startAuction(address _tokenAddress, uint256 offering) external isOwner isSaleOn atStage(Stages.AuctionDeployed) {
-        // Initialize external contract type
-        token = ERC20(_tokenAddress);
-        uint256 balance = token.balanceOf(owner_address);
-
-        // Verify & Initialize starting parameters
-        require(balance >= offering);// TODO check spending limit of contract
-        initial_offering = offering;
-
+    function startAuction() public isOwner isSaleOn atStage(Stages.AuctionDeployed) {
         // Update auction stage and fire event
         start_time = block.timestamp;
         interval_start_time = start_time;
