@@ -11,16 +11,27 @@ import "./Z_Ownable.sol";
  * Based on code by TokenMarketNet: https://github.com/TokenMarketNet/ico/blob/master/contracts/MintableToken.sol
  */
 contract KrpToken is StandardToken, Ownable {
+
+    string public constant name = "Kryptoin Token";
+    string public constant symbol = "KRP";
+    uint8 public constant decimals = 18;
+
     //using SafeMath for uint256;
     event Mint(address indexed to, uint256 amount);
     event MintStopped();
     event MintStarted();
     bool public mintingStopped = false;
+    bool public tradeOn = true;
 
 
     modifier canMint() {
         require(msg.sender == owner);
         require(!mintingStopped);
+        _;
+    }
+
+    modifier isTradeOn() {
+        require(tradeOn == true);
         _;
     }
 
@@ -30,7 +41,7 @@ contract KrpToken is StandardToken, Ownable {
      * @param _amount The amount of tokens to mint.
      * @return A boolean that indicates if the operation was successful.
      */
-    function mint(address _to, uint256 _amount) canMint() public returns (bool) {
+    function mint(address _to, uint256 _amount) canMint() isTradeOn() public returns (bool) {
         totalSupply_ = totalSupply_.add(_amount);
         balances[_to] = balances[_to].add(_amount);
         emit Mint(_to, _amount);
@@ -72,4 +83,18 @@ contract KrpToken is StandardToken, Ownable {
         emit Transfer(burner, address(0), _value);
     }
 
+    // Overrided to put modifier
+    function transfer(address _to, uint256 _value) public isTradeOn returns (bool) {
+        super.transfer(_to, _value);
+    }
+
+    // Overrided to put modifier
+    function transferFrom(address _from, address _to, uint256 _value) public isTradeOn returns (bool) {
+        super.transferFrom(_from, _to, _value);
+    }
+
+    // Toggle trade on/off
+    function toggleTradeOn() public onlyOwner{
+        tradeOn = !tradeOn;
+    }
 }

@@ -15,6 +15,9 @@ contract ICOManager is Ownable{
         bool saleOn;
     }
 
+    event ICOPhaseAdded(string indexed phaseName);
+    event OwnershipTransferred(address indexed to);
+
     uint8 public currentICOPhase;
 
     address[] public auctions;
@@ -53,6 +56,8 @@ contract ICOManager is Ownable{
 
         auctions.push(auction);
         currentAuction = auction;
+
+        emit ICOPhaseAdded(_phaseName);
     }
 
     function toggleSaleStatus() public onlyOwner{
@@ -65,6 +70,7 @@ contract ICOManager is Ownable{
         if (newOwner != address(0)) {
             owner = newOwner;
         }
+        emit OwnershipTransferred(newOwner);
     }
 
     function toggleTradeOn() public onlyOwner {
