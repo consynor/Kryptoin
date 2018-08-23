@@ -504,4 +504,12 @@ contract DutchAuction {
     function transferWeiToOwner() public isOwner atStage(Stages.TokensDistributed){
         wallet_address.transfer(address(this).balance);
     }
+
+    function intervalCountdown() public view isOwner atStage(Stages.AuctionStarted) returns(uint256){
+        return (intervals_duration - (block.timestamp - interval_start_time));
+    }
+
+    function totalTokensInBid() public view isOwner atStage(Stages.AuctionStarted) returns(uint256){
+        return tokens_in_bid.add(amount_in_bid.div(price_current));
+    }
 }
