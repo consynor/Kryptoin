@@ -198,6 +198,7 @@ contract DutchAuction {
         }
 
         require(!bids[sender].absentee && _price >= price_reserve && bidValue >= minimum_bid);
+        require(price_start.sub(_price) % price_change == 0);
 
         // Create bid
         Bid memory bid = Bid({
