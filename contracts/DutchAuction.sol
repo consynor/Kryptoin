@@ -123,6 +123,8 @@ contract DutchAuction {
     //Total amount in bid when bidder wants whole amount to invest
     uint256 public amount_in_bid;
 
+    uint256 price_change;
+
     // Stage modifier
     modifier atStage(Stages _stage) {
         require(current_stage == _stage);
@@ -143,6 +145,7 @@ contract DutchAuction {
     constructor(
         uint256 _priceStart,
         uint256 _priceReserve,
+        uint256 _priceChange,
         uint256 _minimumBid,
         uint256 _claimPeriod,
         address _walletAddress,
@@ -167,6 +170,7 @@ contract DutchAuction {
         // Set auction parameters
         price_start = _priceStart;
         price_reserve = _priceReserve;
+        price_change = _priceChange;
         price_current = _priceStart;
         minimum_bid = _minimumBid;
         claim_period = _claimPeriod;
@@ -452,7 +456,7 @@ contract DutchAuction {
             }
             endImmediately(price_reserve, Endings.ReservePriceReached);
         }else{
-            price_current = price_current.sub(1);
+            price_current = price_current.sub(price_change);
             price_final = price_current;
             interval_start_time = block.timestamp;
             if(preBidders[price_current].exist){

@@ -36,6 +36,7 @@ contract ICOManager is Ownable{
         string _phaseName,
         uint256 _priceStart,
         uint256 _priceReserve,
+        uint256 _priceChange,
         uint256 _minimumBid,
         uint256 _claimPeriod,
         address _walletAddress,
@@ -50,7 +51,7 @@ contract ICOManager is Ownable{
         icoPhasesIndex++;
 
         address auction = new DutchAuction(
-            _priceStart, _priceReserve, _minimumBid,
+            _priceStart, _priceReserve, _priceChange, _minimumBid,
             _claimPeriod, _walletAddress, _intervalDuration,
             _offering, tokenAddress, owner);
 
@@ -60,22 +61,11 @@ contract ICOManager is Ownable{
         emit ICOPhaseAdded(_phaseName);
     }
 
-    function toggleSaleStatus() public onlyOwner{
-        icoPhases[currentICOPhase].saleOn = !icoPhases[currentICOPhase].saleOn;
-        DutchAuction auc = DutchAuction(auctions[auctions.length - 1]);
-        auc.toggleSaleOn();
-    }
-
     function transferOwnership(address newOwner) public onlyOwner {
         if (newOwner != address(0)) {
             owner = newOwner;
         }
         emit OwnershipTransferred(newOwner);
-    }
-
-    function toggleTradeOn() public onlyOwner {
-        KrpToken krp = KrpToken(tokenAddress);
-        krp.toggleTradeOn();
     }
 
     function getAuctions() public view returns(address[]){
