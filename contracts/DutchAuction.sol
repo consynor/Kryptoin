@@ -54,18 +54,21 @@ contract DutchAuction {
     // Current stage
     Stages public current_stage;
 
-    struct PricePreBidder{
-        address[] addresses;
+    struct PricePreBidder {
+        bytes32[] bidHashes;
         bool exist;
     }
 
     // price mapping to addresses of pre bidders
     mapping(uint256 => PricePreBidder) public preBidders;
 
-    // `address` ⇒ `Bid` mapping
-    mapping(address => Bid) public bids;
+    // `bytes32 unique bid id` ⇒ `Bid` mapping
+    mapping(bytes32 => Bid) public bids;
 
-    struct Refund{
+    // address to bid hash mapping
+    mapping(address => bytes32[]) senderBidHash;
+
+    struct Refund {
         uint256 amount;
         bool refunded;
     }
@@ -164,7 +167,8 @@ contract DutchAuction {
         uint256 balance = token.balanceOf(owner_address);
 
         // Verify & Initialize starting parameters
-        require(balance >= _offering);// TODO check spending limit of contract
+        require(balance >= _offering);
+        // TODO check spending limit of contract
         initial_offering = _offering;
 
         // Set auction parameters
@@ -191,13 +195,15 @@ contract DutchAuction {
         address sender = msg.sender;
         uint256 bidValue = msg.value;
 
-        if(_useWholeAmount){
+        if (_useWholeAmount) {
             require(_numOfToken == 0);
-        }else{
+        } else {
             require(_numOfToken == bidValue.div(_price));
         }
 
-        require(!bids[sender].absentee && _price >= price_reserve && bidValue >= minimum_bid);
+        bytes32 bidHash = calculateBidHash(sender, _price, _numOfToken, _useWholeAmount);
+
+        require(!bids[bidHash].absentee && _price >= price_reserve && bidValue >= minimum_bid);
         require(price_start.sub(_price) % price_change == 0);
 
         // Create bid
@@ -206,22 +212,23 @@ contract DutchAuction {
             value : bidValue,
             placed : false,
             claimed : false,
-            absentee: true,
-            useWholeAmount: _useWholeAmount,
-            numOfToken: _numOfToken,
-            sender: sender
+            absentee : true,
+            useWholeAmount : _useWholeAmount,
+            numOfToken : _numOfToken,
+            sender : sender
             });
 
-        bids[sender] = bid;
+        bids[bidHash] = bid;
+        senderBidHash[sender].push(bidHash);
 
         preBidders[_price].exist = true;
-        preBidders[_price].addresses.push(sender);
+        preBidders[_price].bidHashes.push(bidHash);
 
         received_wei = received_wei.add(bidValue);
 
-        wallet_address.transfer(bidValue);
+        //wallet_address.transfer(bidValue);
 
-        emit FundsTransfered(sender, wallet_address, bidValue);
+        //emit FundsTransfered(sender, wallet_address, bidValue);
     }
 
     function doBid(uint256 _price, uint256 _numOfToken, bool _useWholeAmount) public payable isSaleOn atStage(Stages.AuctionStarted) {
@@ -229,17 +236,19 @@ contract DutchAuction {
         address sender = msg.sender;
         uint256 bidValue = msg.value;
 
-        require(!bids[sender].placed && _price == price_current && bidValue >= minimum_bid);
+        bytes32 bidHash = calculateBidHash(sender, _price, _numOfToken, _useWholeAmount);
 
-        if(_useWholeAmount){
+        require(!bids[bidHash].placed && _price == price_current && bidValue >= minimum_bid);
+
+        if (_useWholeAmount) {
             require(_numOfToken == 0);
-        }else{
+        } else {
             require(_numOfToken == bidValue.div(_price));
         }
 
         uint256 acceptableTokens = initial_offering.sub(tokens_in_bid.add(amount_in_bid.div(price_current)));
 
-        if(acceptableTokens <= 0){
+        if (acceptableTokens <= 0) {
             endImmediately(price_current, Endings.SoldOut);
         }
 
@@ -276,28 +285,31 @@ contract DutchAuction {
             value : value,
             placed : true,
             claimed : false,
-            absentee: false,
-            useWholeAmount: useWholeAmount,
-            numOfToken: numOfToken,
-            sender: sender
+            absentee : false,
+            useWholeAmount : useWholeAmount,
+            numOfToken : numOfToken,
+            sender : sender
             });
 
+        bytes32 bidHash = calculateBidHash(sender, price, numOfToken, useWholeAmount);
+
         // Save and fire event
-        bids[sender] = bid;
+        bids[bidHash] = bid;
+        senderBidHash[sender].push(bidHash);
         emit BidAccepted(sender, price, value);
 
         received_wei = received_wei.add(value);
 
         bidSeq.push(bid);
 
-        if(useWholeAmount){
+        if (useWholeAmount) {
             amount_in_bid = amount_in_bid.add(value);
-        }else{
+        } else {
             tokens_in_bid = tokens_in_bid.add(numOfToken);
         }
 
-        wallet_address.transfer(value);
-        emit FundsTransfered(sender, wallet_address, value);
+        //wallet_address.transfer(value);
+        //emit FundsTransfered(sender, wallet_address, value);
     }
 
     // Setup auction
@@ -322,23 +334,23 @@ contract DutchAuction {
         uint256 amountInBid = amount_in_bid;
         uint256 tokensInBid = tokens_in_bid;
 
-        if(tokensInBid.add(amountInBid.div(price_final)) > initial_offering){
+        if (tokensInBid.add(amountInBid.div(price_final)) > initial_offering) {
 
             uint256 extraTokensAllocated = tokensInBid.add(amountInBid.div(price_final)).sub(initial_offering);
 
-            for(uint a = bidSeq.length - 1; a >=0; a--){
+            for (uint a = bidSeq.length - 1; a >= 0; a--) {
                 uint256 bidValue = bidSeq[a].value;
                 uint256 numOfToken = bidSeq[a].numOfToken;
 
                 uint256 assignedTokens;
 
-                if(bidSeq[a].useWholeAmount){
+                if (bidSeq[a].useWholeAmount) {
                     assignedTokens = bidValue.div(price_final);
-                }else{
+                } else {
                     assignedTokens = numOfToken;
                 }
 
-                if(assignedTokens > extraTokensAllocated){
+                if (assignedTokens > extraTokensAllocated) {
 
                     uint256 tokenDifference = assignedTokens - extraTokensAllocated;
                     uint256 returnedWei = extraTokensAllocated.mul(price_final);
@@ -346,32 +358,36 @@ contract DutchAuction {
                     bidSeq[a].value = bidSeq[a].value.sub(returnedWei);
                     bidSeq[a].numOfToken = tokenDifference;
 
-                    if(bidSeq[a].useWholeAmount){
+                    if (bidSeq[a].useWholeAmount) {
                         amount_in_bid = amount_in_bid.sub(returnedWei);
-                    }else{
+                    } else {
                         tokens_in_bid = tokens_in_bid.sub(extraTokensAllocated);
                     }
 
                     // Refund remaining value
-                    Refund memory refund = Refund({
-                        amount: returnedWei,
-                        refunded: false
-                        });
-                    refunds[msg.sender] = refund;
+                    if (refunds[msg.sender].amount > 0) {
+                        refunds[msg.sender].amount = refunds[msg.sender].amount.add(returnedWei);
+                    } else {
+                        Refund memory refund = Refund({
+                            amount : returnedWei,
+                            refunded : false
+                            });
+                        refunds[msg.sender] = refund;
+                    }
                     break;
-                }else if(assignedTokens == extraTokensAllocated){
-                    bids[bidSeq[a].sender].placed = false;
-                    if(bidSeq[a].useWholeAmount){
+                } else if (assignedTokens == extraTokensAllocated) {
+                    bids[calculateBidHash(bidSeq[a].sender, bidSeq[a].price, bidSeq[a].numOfToken, bidSeq[a].useWholeAmount)].placed = false;
+                    if (bidSeq[a].useWholeAmount) {
                         amount_in_bid = amount_in_bid.sub(bidValue);
-                    }else{
+                    } else {
                         tokens_in_bid = tokens_in_bid.sub(numOfToken);
                     }
                     break;
-                }else{
-                    bids[bidSeq[a].sender].placed = false;
-                    if(bidSeq[a].useWholeAmount){
+                } else {
+                    bids[calculateBidHash(bidSeq[a].sender, bidSeq[a].price, bidSeq[a].numOfToken, bidSeq[a].useWholeAmount)].placed = false;
+                    if (bidSeq[a].useWholeAmount) {
                         amount_in_bid = amount_in_bid.sub(bidValue);
-                    }else{
+                    } else {
                         tokens_in_bid = tokens_in_bid.sub(numOfToken);
                     }
                     continue;
@@ -386,98 +402,108 @@ contract DutchAuction {
     // Claim tokens
     function claimTokens() external atStage(Stages.AuctionEnded) {
         // Input validation
-        require(block.timestamp >= end_time.add(claim_period));
-        require(bids[msg.sender].placed && !bids[msg.sender].claimed);
+        require(block.timestamp >= end_time.add(claim_period), "Claim period has not started");
+        require(senderBidHash[msg.sender].length > 0, "This bidder has no successful bids");
 
-        Bid memory claimedBid = bids[msg.sender];
-        // Calculate tokens to receive
-        uint256 tokens = claimedBid.useWholeAmount ? claimedBid.value.div(price_final) : claimedBid.numOfToken;
-        uint256 auctionTokensBalance = token.balanceOf(owner_address);
-        if (tokens > auctionTokensBalance) {
-            // Unreachable code
-            tokens = auctionTokensBalance;
-        }
+        for (uint a = senderBidHash[msg.sender].length; a > 0; a--) {
+            if (bids[senderBidHash[msg.sender][a - 1]].placed == true && bids[senderBidHash[msg.sender][a - 1]].claimed == false) {
+                Bid memory claimedBid = bids[senderBidHash[msg.sender][a - 1]];
+                // Calculate tokens to receive
+                uint256 tokens = claimedBid.useWholeAmount ? claimedBid.value.div(price_final) : claimedBid.numOfToken;
+                uint256 auctionTokensBalance = token.balanceOf(owner_address);
+                if (tokens > auctionTokensBalance) {
+                    // Unreachable code
+                    tokens = auctionTokensBalance;
+                }
 
-        bids[msg.sender].claimed = true;
+                bids[senderBidHash[msg.sender][a - 1]].claimed = true;
 
-        // Transfer tokens and fire event
-        token.transferFrom(owner_address, msg.sender, tokens);
-        emit TokensClaimed(msg.sender, tokens);
+                // Transfer tokens and fire event
+                token.transferFrom(owner_address, msg.sender, tokens);
+                emit TokensClaimed(msg.sender, tokens);
 
-        //Update the total amount of funds for which tokens have been claimed and check for refunds
-        if(claimedBid.useWholeAmount){
-            claimed_wei = claimed_wei + claimedBid.value;
-        }else{
-            uint256 usedWei = claimedBid.numOfToken.mul(price_final);
-            claimed_wei = claimed_wei + usedWei;
-            Refund memory refund = Refund({
-                amount: claimedBid.value.sub(usedWei),
-                refunded: false
-                });
-            refunds[msg.sender] = refund;
-        }
+                //Update the total amount of funds for which tokens have been claimed and check for refunds
+                if (claimedBid.useWholeAmount) {
+                    claimed_wei = claimed_wei + claimedBid.value;
+                } else {
+                    uint256 usedWei = claimedBid.numOfToken.mul(price_final);
+                    claimed_wei = claimed_wei + usedWei;
+                    if (refunds[msg.sender].amount > 0) {
+                        refunds[msg.sender].amount = refunds[msg.sender].amount.add(claimedBid.value.sub(usedWei));
+                    } else {
+                        Refund memory refund = Refund({
+                            amount : claimedBid.value.sub(usedWei),
+                            refunded : false
+                            });
+                        refunds[msg.sender] = refund;
+                    }
+                }
 
-        // Set new state if all tokens distributed
-        if (claimed_wei >= received_wei) {
-            current_stage = Stages.TokensDistributed;
-            emit TokensDistributed();
+                // Set new state if all tokens distributed
+                if (claimed_wei >= received_wei) {
+                    current_stage = Stages.TokensDistributed;
+                    emit TokensDistributed();
+                }
+            }
         }
     }
 
-    function claimRefund() external atStage(Stages.AuctionEnded){
+    function claimRefund() external atStage(Stages.AuctionEnded) {
         require(refunds[msg.sender].refunded == false);
 
-        uint256 amountToRefund = 0;
+        uint256 amountToRefund = refunds[msg.sender].amount;
 
-        if(refunds[msg.sender].amount == 0 && bids[msg.sender].placed == false){
-            amountToRefund = bids[msg.sender].value;
-            refunds[msg.sender].amount = amountToRefund;
-        }else{
-            amountToRefund = refunds[msg.sender].amount;
+        for (uint a = senderBidHash[msg.sender].length; a > 0; a--) {
+            if (bids[senderBidHash[msg.sender][a - 1]].placed == false) {
+                amountToRefund = amountToRefund.add(bids[senderBidHash[msg.sender][a - 1]].value);
+            }
         }
+        //update the actual amount being refunded
+        refunds[msg.sender].amount = amountToRefund;
 
         refunds[msg.sender].refunded = true;
 
         // Transfer amount to msg.sender from contract account
         msg.sender.transfer(amountToRefund);
         emit BidRefunded(msg.sender, amountToRefund);
+
     }
 
     // To be called by external API to check whether a price update is required
-    function needToBeUpdated() public view isOwner atStage(Stages.AuctionStarted) returns(bool){
+    function needToBeUpdated() public view isOwner atStage(Stages.AuctionStarted) returns (bool){
         return (block.timestamp - interval_start_time >= intervals_duration);
     }
 
     //To be called by external API to update price, when no bid occur during interval duration
     function updatePrice() public isOwner atStage(Stages.AuctionStarted) {
         require(price_current >= price_reserve);
-        if(price_current == price_reserve){
-            if(preBidders[price_current].exist){
+        if (price_current == price_reserve) {
+            if (preBidders[price_current].exist) {
                 placePreBid(price_reserve);
             }
             endImmediately(price_reserve, Endings.ReservePriceReached);
-        }else{
+        } else {
             price_current = price_current.sub(price_change);
             price_final = price_current;
             interval_start_time = block.timestamp;
-            if(preBidders[price_current].exist){
+            if (preBidders[price_current].exist) {
                 placePreBid(price_current);
             }
         }
     }
 
     // To place absentee bids
-    function placePreBid(uint256 price) internal atStage(Stages.AuctionStarted){
-        address[] memory addresses = preBidders[price].addresses;
+    function placePreBid(uint256 price) internal atStage(Stages.AuctionStarted) {
+        bytes32[] memory bidHashes = preBidders[price].bidHashes;
 
-        for(uint a = 0; a < addresses.length; a++ ){
-            Bid storage preBid = bids[addresses[a]];
-            if(preBid.placed == false){
+        for (uint a = 0; a < bidHashes.length; a++) {
+            Bid storage preBid = bids[bidHashes[a]];
+            if (preBid.placed == false) {
                 preBid.placed = true;
 
-                if(preBid.useWholeAmount){
+                if (preBid.useWholeAmount) {
                     amount_in_bid = amount_in_bid.add(preBid.value);
-                }else{
+                } else {
                     tokens_in_bid = tokens_in_bid.add(preBid.numOfToken);
                 }
 
@@ -502,19 +528,35 @@ contract DutchAuction {
         return token.balanceOf(accAddress);
     }
 
-    function getPreBidders(uint256 price) public view isOwner returns (address[]) {
-        return preBidders[price].addresses;
+    function getPreBidders(uint256 price) public view isOwner returns (bytes32[]) {
+        return preBidders[price].bidHashes;
     }
 
-    function transferWeiToOwner() public isOwner atStage(Stages.TokensDistributed){
+    function transferWeiToOwner() public isOwner atStage(Stages.TokensDistributed) {
         wallet_address.transfer(address(this).balance);
     }
 
-    function intervalCountdown() public view isOwner atStage(Stages.AuctionStarted) returns(uint256){
+    function intervalCountdown() public view isOwner atStage(Stages.AuctionStarted) returns (uint256){
         return (intervals_duration - (block.timestamp - interval_start_time));
     }
 
-    function totalTokensInBid() public view isOwner atStage(Stages.AuctionStarted) returns(uint256){
+    function totalTokensInBid() public view atStage(Stages.AuctionStarted) returns (uint256){
         return tokens_in_bid.add(amount_in_bid.div(price_current));
+    }
+
+    function calculateBidHash(address sender, uint256 price, uint256 numOfToken, bool useWholeAmount) internal pure returns (bytes32){
+        return keccak256(abi.encodePacked(sender, price, numOfToken, useWholeAmount));
+    }
+
+    function getBidHashes(address bidder) public view returns (bytes32[]){
+        return senderBidHash[bidder];
+    }
+
+    function noOfBids(address bidder) public view returns (uint){
+        return senderBidHash[bidder].length;
+    }
+
+    function getContractBalance() public view returns (uint256){
+        return address(this).balance;
     }
 }
