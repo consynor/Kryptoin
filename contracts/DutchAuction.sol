@@ -318,6 +318,11 @@ contract DutchAuction {
         start_time = block.timestamp;
         interval_start_time = start_time;
         current_stage = Stages.AuctionStarted;
+
+        if (preBidders[price_start].exist) {
+            placePreBid(price_start);
+        }
+
         emit AuctionStarted(start_time);
     }
 
@@ -419,7 +424,7 @@ contract DutchAuction {
                 bids[senderBidHash[msg.sender][a - 1]].claimed = true;
 
                 // Transfer tokens and fire event
-                token.transferFrom(owner_address, msg.sender, tokens);
+                token.transferFrom(owner_address, msg.sender, tokens*10^18);
                 emit TokensClaimed(msg.sender, tokens);
 
                 //Update the total amount of funds for which tokens have been claimed and check for refunds
