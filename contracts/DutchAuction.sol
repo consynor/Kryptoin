@@ -126,11 +126,16 @@ contract DutchAuction {
     //Total amount in bid when bidder wants whole amount to invest
     uint256 public amount_in_bid;
 
-    uint256 price_change;
+    uint256 public price_change;
 
     // Stage modifier
     modifier atStage(Stages _stage) {
         require(current_stage == _stage);
+        _;
+    }
+
+    modifier atStageOr(Stages _stage1, Stages _stage2) {
+        require(current_stage == _stage1 || current_stage == _stage2);
         _;
     }
 
@@ -453,7 +458,7 @@ contract DutchAuction {
         }
     }
 
-    function claimRefund() external atStage(Stages.AuctionEnded) {
+    function claimRefund() external atStageOr(Stages.AuctionEnded, Stages.TokensDistributed) {
         require(refunds[msg.sender].refunded == false);
 
         uint256 amountToRefund = refunds[msg.sender].amount;
@@ -467,6 +472,13 @@ contract DutchAuction {
         refunds[msg.sender].amount = amountToRefund;
 
         refunds[msg.sender].refunded = true;
+
+        claimed_wei = claimed_wei.add(amountToRefund);
+
+        if (claimed_wei >= received_wei) {
+            current_stage = Stages.TokensDistributed;
+            emit TokensDistributed();
+        }
 
         // Transfer amount to msg.sender from contract account
         msg.sender.transfer(amountToRefund);
@@ -537,8 +549,12 @@ contract DutchAuction {
         return preBidders[price].bidHashes;
     }
 
-    function transferWeiToOwner() public isOwner atStage(Stages.TokensDistributed) {
-        wallet_address.transfer(address(this).balance);
+    function transferWeiToOwner(uint256 _amount) isOwner external {
+        /**
+         * Withdraw wei collected by the contract. Only the owner can call this.
+         */
+        require(_amount <= getContractBalance()); // Also prevents underflow
+        wallet_address.transfer(_amount);
     }
 
     function intervalCountdown() public view isOwner atStage(Stages.AuctionStarted) returns (uint256){
