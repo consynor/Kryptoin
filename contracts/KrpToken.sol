@@ -1,31 +1,24 @@
-pragma solidity ^0.4.24;
+pragma solidity ^0.4.25;
 
 import "./Z_StandardToken.sol";
 import "./Z_Ownable.sol";
 
-
-/**
- * @title Mintable token
- * @dev Simple ERC20 Token example, with mintable token creation
- * @dev Issue: * https://github.com/OpenZeppelin/zeppelin-solidity/issues/120
- * Based on code by TokenMarketNet: https://github.com/TokenMarketNet/ico/blob/master/contracts/MintableToken.sol
- */
 contract KrpToken is StandardToken, Ownable {
 
-    string public constant name = "Kryptoin Token";
-    string public constant symbol = "KRP";
+    string public constant name = "Kryptoin";
+    string public constant symbol = "KRP-TEST";
     uint8 public constant decimals = 18;
 
-    //using SafeMath for uint256;
     event Mint(address indexed to, uint256 amount);
     event MintStopped();
     event MintStarted();
     bool public mintingStopped = false;
     bool public tradeOn = true;
 
+    address mintManager;
 
     modifier canMint() {
-        require(msg.sender == owner);
+        require(msg.sender == owner || msg.sender == mintManager);
         require(!mintingStopped);
         _;
     }
@@ -35,17 +28,22 @@ contract KrpToken is StandardToken, Ownable {
         _;
     }
 
+    function setMintManager(address _mintManager) public onlyOwner {
+        mintManager = _mintManager;
+    }
+
     /**
-     * @dev Function to mint tokens
-     * @param _to The address that will receive the minted tokens.
-     * @param _amount The amount of tokens to mint.
-     * @return A boolean that indicates if the operation was successful.
-     */
-    function mint(address _to, uint256 _amount) canMint() isTradeOn() public returns (bool) {
-        totalSupply_ = totalSupply_.add(_amount);
-        balances[_to] = balances[_to].add(_amount);
-        emit Mint(_to, _amount);
-        emit Transfer(address(0), _to, _amount);
+    * @dev Internal function that mints an amount of the token and assigns it to
+    * an account.
+    * @param account The account that will receive the created tokens.
+    * @param amount The amount that will be created.
+    */
+    function mint(address account, uint256 amount) public canMint() returns(bool) {
+        require(account != 0);
+        totalSupply_ = totalSupply_.add(amount);
+        balances[account] = balances[account].add(amount);
+        emit Mint(account, amount);
+        emit Transfer(address(0), account, amount);
         return true;
     }
 
@@ -65,22 +63,22 @@ contract KrpToken is StandardToken, Ownable {
         return true;
     }
 
-    event Burn(address indexed burner, uint256 value);
+    event Burn(address indexed account, uint256 value);
 
     /**
-     * @dev Burns a specific amount of tokens.
-     * @param _value The amount of token to be burned.
+     * @dev Function that burns an amount of the token of a given
+     * account.
+     * @param account The account whose tokens will be burnt.
+     * @param amount The amount that will be burnt.
      */
-    function burn(uint256 _value) public onlyOwner{
-        require(_value <= balances[msg.sender]);
-        // no need to require value <= totalSupply, since that would imply the
-        // sender's balance is greater than the totalSupply, which *should* be an assertion failure
+    function burn(address account, uint256 amount) public canMint() {
+        require(account != 0);
+        require(amount <= balances[account]);
 
-        address burner = msg.sender;
-        balances[burner] = balances[burner].sub(_value);
-        totalSupply_ = totalSupply_.sub(_value);
-        emit Burn(burner, _value);
-        emit Transfer(burner, address(0), _value);
+        totalSupply_ = totalSupply_.sub(amount);
+        balances[account] = balances[account].sub(amount);
+        emit Burn(account, amount);
+        emit Transfer(account, address(0), amount);
     }
 
     // Overrided to put modifier
