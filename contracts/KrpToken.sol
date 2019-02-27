@@ -1,4 +1,4 @@
-pragma solidity ^0.4.25;
+pragma solidity ^0.5.4;
 
 import "./Z_StandardToken.sol";
 import "./Z_Ownable.sol";
@@ -39,7 +39,7 @@ contract KrpToken is StandardToken, Ownable {
     * @param amount The amount that will be created.
     */
     function mint(address account, uint256 amount) public canMint() returns(bool) {
-        require(account != 0);
+        require(account != address(0));
         totalSupply_ = totalSupply_.add(amount);
         balances[account] = balances[account].add(amount);
         emit Mint(account, amount);
@@ -72,7 +72,7 @@ contract KrpToken is StandardToken, Ownable {
      * @param amount The amount that will be burnt.
      */
     function burn(address account, uint256 amount) public canMint() {
-        require(account != 0);
+        require(account != address(0));
         require(amount <= balances[account]);
 
         totalSupply_ = totalSupply_.sub(amount);
